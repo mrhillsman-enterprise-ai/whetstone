@@ -6,8 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::ui;
 use crate::version;
 
-const REMOTE_VERSION_URL: &str =
-    "https://raw.githubusercontent.com/zackkitzmiller/whetstone/main/VERSION";
+const REMOTE_VERSION_URL: &str = "https://raw.githubusercontent.com/z19r/whetstone/main/VERSION";
 const CACHE_TTL_SECS: u64 = 12 * 60 * 60;
 
 fn cache_path() -> Result<PathBuf> {
