@@ -18,8 +18,19 @@ mod wrapper;
 use clap::Parser;
 use cli::{Cli, Command};
 
+fn show_upgrade_banner(cmd: &Option<Command>) {
+    let skip = matches!(cmd, Some(Command::Update { .. } | Command::Version));
+    if skip {
+        return;
+    }
+    let outdated = update::check_cached_upgrade();
+    ui::upgrade_banner(&outdated);
+}
+
 fn main() {
     let cli = Cli::parse();
+
+    show_upgrade_banner(&cli.command);
 
     match cli.command {
         None => {

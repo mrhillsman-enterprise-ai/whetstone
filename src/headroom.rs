@@ -23,7 +23,7 @@ fn package_spec(extras: &str) -> String {
     }
 }
 
-fn installed_version() -> Option<String> {
+pub fn installed_version() -> Option<String> {
     let output = Command::new("headroom").arg("--version").output().ok()?;
     if !output.status.success() {
         return None;
@@ -52,6 +52,22 @@ pub fn install(extras: &str, force: bool) -> Result<()> {
         None => bail!("headroom installation failed — check uv output above"),
     }
     Ok(())
+}
+
+pub fn update() -> Result<ui::ComponentStatus> {
+    let Some(old_ver) = installed_version() else {
+        return Ok(ui::ComponentStatus::NotInstalled);
+    };
+
+    let spec = package_spec("all");
+    run_uv_install(&spec, true)?;
+
+    let new_ver = installed_version().unwrap_or_else(|| old_ver.clone());
+    if new_ver != old_ver {
+        Ok(ui::ComponentStatus::Updated(old_ver, new_ver))
+    } else {
+        Ok(ui::ComponentStatus::UpToDate(old_ver))
+    }
 }
 
 fn run_uv_install(spec: &str, upgrade: bool) -> Result<()> {

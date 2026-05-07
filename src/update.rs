@@ -1,13 +1,35 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
+use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::Read;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::ui;
-use crate::version;
+use crate::{headroom, rtk, ui, version};
 
 const REMOTE_VERSION_URL: &str = "https://raw.githubusercontent.com/z19r/whetstone/main/VERSION";
+const RELEASE_URL_BASE: &str = "https://github.com/z19r/whetstone/releases/download";
 const CACHE_TTL_SECS: u64 = 12 * 60 * 60;
+
+#[derive(Debug, Serialize, Deserialize)]
+struct VersionCache {
+    whetstone_latest: String,
+    #[serde(default)]
+    rtk_latest: Option<String>,
+    #[serde(default)]
+    rtk_current: Option<String>,
+    #[serde(default)]
+    headroom_latest: Option<String>,
+    #[serde(default)]
+    headroom_current: Option<String>,
+    timestamp: u64,
+}
+
+pub struct OutdatedComponent {
+    pub name: &'static str,
+    pub current: String,
+    pub latest: String,
+}
 
 fn cache_path() -> Result<PathBuf> {
     let home = dirs::home_dir().context("could not determine home directory")?;
@@ -23,19 +45,32 @@ fn now_epoch() -> u64 {
         .as_secs()
 }
 
-fn read_cache() -> Option<(String, u64)> {
+fn read_cache() -> Option<VersionCache> {
     let path = cache_path().ok()?;
-    let content = fs::read_to_string(path).ok()?;
+    let content = fs::read_to_string(&path).ok()?;
+
+    if let Ok(cache) = serde_json::from_str::<VersionCache>(&content) {
+        return Some(cache);
+    }
+
     let mut lines = content.lines();
     let ver = lines.next()?.trim().to_string();
     let ts: u64 = lines.next()?.trim().parse().ok()?;
-    Some((ver, ts))
+    Some(VersionCache {
+        whetstone_latest: ver,
+        rtk_latest: None,
+        rtk_current: None,
+        headroom_latest: None,
+        headroom_current: None,
+        timestamp: ts,
+    })
 }
 
-fn write_cache(version: &str) {
+fn write_cache(cache: &VersionCache) {
     if let Ok(path) = cache_path() {
-        let content = format!("{version}\n{}", now_epoch());
-        let _ = fs::write(path, content);
+        if let Ok(json) = serde_json::to_string(cache) {
+            let _ = fs::write(path, json);
+        }
     }
 }
 
@@ -49,37 +84,209 @@ fn fetch_remote_version() -> Result<String> {
     version::extract_semver(body.trim()).context("no valid semver in remote VERSION")
 }
 
-pub fn run(full: bool) -> Result<()> {
-    let current = version::current().to_string();
-    ui::info(&format!("current version: {current}"));
+pub fn check_cached_upgrade() -> Vec<OutdatedComponent> {
+    let mut outdated = Vec::new();
 
-    let remote = if let Some((cached_ver, ts)) = read_cache() {
-        if now_epoch() - ts < CACHE_TTL_SECS {
-            ui::info("using cached version check");
-            cached_ver
-        } else {
-            let ver = fetch_remote_version()?;
-            write_cache(&ver);
-            ver
-        }
-    } else {
-        let ver = fetch_remote_version()?;
-        write_cache(&ver);
-        ver
+    let Some(cache) = read_cache() else {
+        return outdated;
     };
+    if now_epoch().saturating_sub(cache.timestamp) > CACHE_TTL_SECS {
+        return outdated;
+    }
 
-    ui::info(&format!("latest version: {remote}"));
+    let current_whetstone = version::current().to_string();
+    if version::is_older(&current_whetstone, &cache.whetstone_latest) {
+        outdated.push(OutdatedComponent {
+            name: "whetstone",
+            current: current_whetstone,
+            latest: cache.whetstone_latest.clone(),
+        });
+    }
 
-    if version::is_older(&current, &remote) {
-        ui::info(&format!("update available: {current} -> {remote}"));
-        ui::info("run: curl -fsSL https://raw.githubusercontent.com/z19r/whetstone/main/install.sh | bash");
+    if let (Some(current), Some(latest)) = (&cache.rtk_current, &cache.rtk_latest) {
+        if version::is_older(current, latest) {
+            outdated.push(OutdatedComponent {
+                name: "rtk",
+                current: current.clone(),
+                latest: latest.clone(),
+            });
+        }
+    }
 
-        if full {
-            ui::info("--full passed: re-running setup after update");
-            ui::warn("self-update via binary download not yet implemented");
+    if let (Some(current), Some(latest)) = (&cache.headroom_current, &cache.headroom_latest) {
+        if version::is_older(current, latest) {
+            outdated.push(OutdatedComponent {
+                name: "headroom",
+                current: current.clone(),
+                latest: latest.clone(),
+            });
+        }
+    }
+
+    outdated
+}
+
+fn detect_target() -> Option<&'static str> {
+    let arch = std::env::consts::ARCH;
+    let os = std::env::consts::OS;
+
+    match (os, arch) {
+        ("linux", "x86_64") => Some("x86_64-unknown-linux-gnu"),
+        ("linux", "aarch64") => Some("aarch64-unknown-linux-gnu"),
+        ("macos", "x86_64") => Some("x86_64-apple-darwin"),
+        ("macos", "aarch64") => Some("aarch64-apple-darwin"),
+        _ => None,
+    }
+}
+
+fn self_update(latest: &str) -> Result<ui::ComponentStatus> {
+    let current = version::current().to_string();
+
+    if !version::is_older(&current, latest) {
+        return Ok(ui::ComponentStatus::UpToDate(current));
+    }
+
+    let target = detect_target().context("unsupported platform for self-update")?;
+    let url = format!("{RELEASE_URL_BASE}/v{latest}/whetstone-{target}.tar.gz");
+
+    let sp = ui::spinner(&format!("downloading whetstone {latest}"));
+
+    let resp = ureq::get(&url)
+        .call()
+        .with_context(|| format!("downloading {url}"))?;
+
+    let mut compressed = Vec::new();
+    resp.into_reader()
+        .read_to_end(&mut compressed)
+        .context("reading release tarball")?;
+
+    sp.finish_and_clear();
+
+    let decoder = flate2::read::GzDecoder::new(compressed.as_slice());
+    let mut archive = tar::Archive::new(decoder);
+
+    let current_exe = std::env::current_exe().context("locating current binary")?;
+    let parent = current_exe
+        .parent()
+        .context("no parent dir for current binary")?;
+    let staging = parent.join(".whetstone-update");
+
+    for entry in archive.entries().context("reading tar entries")? {
+        let mut entry = entry.context("reading tar entry")?;
+        let path = entry.path().context("reading entry path")?;
+        if path.file_name().and_then(|n| n.to_str()) == Some("whetstone") {
+            entry
+                .unpack(&staging)
+                .context("extracting whetstone binary")?;
+            break;
+        }
+    }
+
+    if !staging.exists() {
+        bail!("whetstone binary not found in release tarball");
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Err(e) = fs::set_permissions(&staging, fs::Permissions::from_mode(0o755)) {
+            let _ = fs::remove_file(&staging);
+            return Err(e).context("setting permissions on new binary");
+        }
+    }
+
+    let mut backup_name = current_exe
+        .file_name()
+        .context("no file name on current_exe")?
+        .to_os_string();
+    backup_name.push(".old");
+    let backup = current_exe.with_file_name(backup_name);
+
+    if let Err(e) = fs::rename(&current_exe, &backup) {
+        let _ = fs::remove_file(&staging);
+        return Err(e).context("backing up current binary");
+    }
+
+    if let Err(e) = fs::rename(&staging, &current_exe) {
+        let _ = fs::rename(&backup, &current_exe);
+        let _ = fs::remove_file(&staging);
+        return Err(e).context("replacing binary with new version");
+    }
+
+    let _ = fs::remove_file(&backup);
+
+    Ok(ui::ComponentStatus::Updated(current, latest.to_string()))
+}
+
+pub fn run(_full: bool) -> Result<()> {
+    ui::section("whetstone update");
+
+    let sp = ui::spinner("checking for updates");
+    let latest = fetch_remote_version()?;
+    sp.finish_and_clear();
+
+    let current = version::current().to_string();
+    let rtk_before = rtk::installed_version();
+    let headroom_before = headroom::installed_version();
+    let mut updated_count = 0u32;
+
+    let whetstone_status = match self_update(&latest) {
+        Ok(status) => status,
+        Err(e) => ui::ComponentStatus::Failed(format!("{e:#}")),
+    };
+    if matches!(&whetstone_status, ui::ComponentStatus::Updated(_, _)) {
+        updated_count += 1;
+    }
+    ui::component_line("whetstone", &whetstone_status);
+
+    let rtk_status = match rtk::update() {
+        Ok(status) => status,
+        Err(e) => ui::ComponentStatus::Failed(format!("{e:#}")),
+    };
+    if matches!(&rtk_status, ui::ComponentStatus::Updated(_, _)) {
+        updated_count += 1;
+    }
+    ui::component_line("rtk", &rtk_status);
+
+    let headroom_status = match headroom::update() {
+        Ok(status) => status,
+        Err(e) => ui::ComponentStatus::Failed(format!("{e:#}")),
+    };
+    if matches!(&headroom_status, ui::ComponentStatus::Updated(_, _)) {
+        updated_count += 1;
+    }
+    ui::component_line("headroom", &headroom_status);
+
+    let memory_status = ui::ComponentStatus::UpToDate("embedded".into());
+    ui::component_line("memory (ICM)", &memory_status);
+
+    write_cache(&VersionCache {
+        whetstone_latest: latest.clone(),
+        rtk_current: rtk_before,
+        rtk_latest: rtk::installed_version(),
+        headroom_current: headroom_before,
+        headroom_latest: headroom::installed_version(),
+        timestamp: now_epoch(),
+    });
+
+    if updated_count > 0 {
+        ui::summary_ok(&format!("Updated {updated_count} component(s)"));
+
+        if matches!(&whetstone_status, ui::ComponentStatus::Updated(_, _)) {
+            ui::info(&format!(
+                "whetstone updated from {current} → {latest} — restart your shell to use it"
+            ));
         }
     } else {
-        ui::ok("already up to date");
+        let has_failures = matches!(&whetstone_status, ui::ComponentStatus::Failed(_))
+            || matches!(&rtk_status, ui::ComponentStatus::Failed(_))
+            || matches!(&headroom_status, ui::ComponentStatus::Failed(_));
+
+        if has_failures {
+            ui::summary_info("Some components failed to update — see errors above");
+        } else {
+            ui::summary_ok("Everything is up to date");
+        }
     }
 
     Ok(())

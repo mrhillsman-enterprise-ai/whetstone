@@ -8,7 +8,7 @@ const MIN_VERSION: &str = "0.7.0";
 const INSTALL_URL: &str =
     "https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh";
 
-fn installed_version() -> Option<String> {
+pub fn installed_version() -> Option<String> {
     let output = Command::new("rtk").arg("--version").output().ok()?;
     if !output.status.success() {
         return None;
@@ -41,6 +41,35 @@ pub fn install(force: bool) -> Result<()> {
         ui::info("installing rtk");
     }
 
+    run_install()?;
+
+    match installed_version() {
+        Some(ver) if is_rtk_ai() => ui::ok(&format!("rtk {ver}")),
+        _ => bail!("rtk installation completed but rtk-ai not detected"),
+    }
+    Ok(())
+}
+
+pub fn update() -> Result<ui::ComponentStatus> {
+    let Some(old_ver) = installed_version() else {
+        return Ok(ui::ComponentStatus::NotInstalled);
+    };
+    if !is_rtk_ai() {
+        return Ok(ui::ComponentStatus::Failed(
+            "not rtk-ai (collision?)".into(),
+        ));
+    }
+    run_install()?;
+
+    let new_ver = installed_version().unwrap_or_else(|| old_ver.clone());
+    if new_ver != old_ver {
+        Ok(ui::ComponentStatus::Updated(old_ver, new_ver))
+    } else {
+        Ok(ui::ComponentStatus::UpToDate(old_ver))
+    }
+}
+
+fn run_install() -> Result<()> {
     let status = Command::new("sh")
         .arg("-c")
         .arg(format!("curl -fsSL {INSTALL_URL} | sh"))
@@ -48,11 +77,6 @@ pub fn install(force: bool) -> Result<()> {
 
     if !status.success() {
         bail!("rtk installation failed");
-    }
-
-    match installed_version() {
-        Some(ver) if is_rtk_ai() => ui::ok(&format!("rtk {ver}")),
-        _ => bail!("rtk installation completed but rtk-ai not detected"),
     }
     Ok(())
 }
