@@ -356,15 +356,26 @@ fn self_install() -> Result<()> {
         return Ok(());
     }
 
-    fs::copy(&current_exe, &dest)
-        .with_context(|| format!("copying binary to {}", dest.display()))?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&dest, fs::Permissions::from_mode(0o755))?;
+    if dest.exists() || dest.symlink_metadata().is_ok() {
+        fs::remove_file(&dest).with_context(|| format!("removing old {}", dest.display()))?;
     }
 
+    install_link_or_copy(&current_exe, &dest)?;
+
+    Ok(())
+}
+
+#[cfg(unix)]
+fn install_link_or_copy(src: &std::path::Path, dest: &std::path::Path) -> Result<()> {
+    std::os::unix::fs::symlink(src, dest)
+        .with_context(|| format!("symlinking {} → {}", dest.display(), src.display()))?;
+    ui::ok(&format!("symlinked to {}", dest.display()));
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn install_link_or_copy(src: &std::path::Path, dest: &std::path::Path) -> Result<()> {
+    fs::copy(src, dest).with_context(|| format!("copying binary to {}", dest.display()))?;
     ui::ok(&format!("installed to {}", dest.display()));
     Ok(())
 }

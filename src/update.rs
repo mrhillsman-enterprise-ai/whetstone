@@ -72,7 +72,7 @@ pub fn run(full: bool) -> Result<()> {
 
     if version::is_older(&current, &remote) {
         ui::info(&format!("update available: {current} -> {remote}"));
-        ui::info("run: curl -fsSL <install-url> | sh");
+        ui::info("run: curl -fsSL https://raw.githubusercontent.com/z19r/whetstone/main/install.sh | bash");
 
         if full {
             ui::info("--full passed: re-running setup after update");
