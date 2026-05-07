@@ -1,4 +1,5 @@
 use anyhow::{bail, Context, Result};
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Read;
 use std::path::PathBuf;
@@ -9,6 +10,26 @@ use crate::{headroom, rtk, ui, version};
 const REMOTE_VERSION_URL: &str = "https://raw.githubusercontent.com/z19r/whetstone/main/VERSION";
 const RELEASE_URL_BASE: &str = "https://github.com/z19r/whetstone/releases/download";
 const CACHE_TTL_SECS: u64 = 12 * 60 * 60;
+
+#[derive(Debug, Serialize, Deserialize)]
+struct VersionCache {
+    whetstone_latest: String,
+    #[serde(default)]
+    rtk_latest: Option<String>,
+    #[serde(default)]
+    rtk_current: Option<String>,
+    #[serde(default)]
+    headroom_latest: Option<String>,
+    #[serde(default)]
+    headroom_current: Option<String>,
+    timestamp: u64,
+}
+
+pub struct OutdatedComponent {
+    pub name: &'static str,
+    pub current: String,
+    pub latest: String,
+}
 
 fn cache_path() -> Result<PathBuf> {
     let home = dirs::home_dir().context("could not determine home directory")?;
@@ -24,19 +45,32 @@ fn now_epoch() -> u64 {
         .as_secs()
 }
 
-fn read_cache() -> Option<(String, u64)> {
+fn read_cache() -> Option<VersionCache> {
     let path = cache_path().ok()?;
-    let content = fs::read_to_string(path).ok()?;
+    let content = fs::read_to_string(&path).ok()?;
+
+    if let Ok(cache) = serde_json::from_str::<VersionCache>(&content) {
+        return Some(cache);
+    }
+
     let mut lines = content.lines();
     let ver = lines.next()?.trim().to_string();
     let ts: u64 = lines.next()?.trim().parse().ok()?;
-    Some((ver, ts))
+    Some(VersionCache {
+        whetstone_latest: ver,
+        rtk_latest: None,
+        rtk_current: None,
+        headroom_latest: None,
+        headroom_current: None,
+        timestamp: ts,
+    })
 }
 
-fn write_cache(version: &str) {
+fn write_cache(cache: &VersionCache) {
     if let Ok(path) = cache_path() {
-        let content = format!("{version}\n{}", now_epoch());
-        let _ = fs::write(path, content);
+        if let Ok(json) = serde_json::to_string(cache) {
+            let _ = fs::write(path, json);
+        }
     }
 }
 
@@ -50,17 +84,46 @@ fn fetch_remote_version() -> Result<String> {
     version::extract_semver(body.trim()).context("no valid semver in remote VERSION")
 }
 
-pub fn check_cached_upgrade() -> Option<(String, String)> {
-    let (cached_ver, ts) = read_cache()?;
-    if now_epoch() - ts > CACHE_TTL_SECS {
-        return None;
+pub fn check_cached_upgrade() -> Vec<OutdatedComponent> {
+    let mut outdated = Vec::new();
+
+    let Some(cache) = read_cache() else {
+        return outdated;
+    };
+    if now_epoch().saturating_sub(cache.timestamp) > CACHE_TTL_SECS {
+        return outdated;
     }
-    let current = version::current().to_string();
-    if version::is_older(&current, &cached_ver) {
-        Some((current, cached_ver))
-    } else {
-        None
+
+    let current_whetstone = version::current().to_string();
+    if version::is_older(&current_whetstone, &cache.whetstone_latest) {
+        outdated.push(OutdatedComponent {
+            name: "whetstone",
+            current: current_whetstone,
+            latest: cache.whetstone_latest.clone(),
+        });
     }
+
+    if let (Some(current), Some(latest)) = (&cache.rtk_current, &cache.rtk_latest) {
+        if version::is_older(current, latest) {
+            outdated.push(OutdatedComponent {
+                name: "rtk",
+                current: current.clone(),
+                latest: latest.clone(),
+            });
+        }
+    }
+
+    if let (Some(current), Some(latest)) = (&cache.headroom_current, &cache.headroom_latest) {
+        if version::is_older(current, latest) {
+            outdated.push(OutdatedComponent {
+                name: "headroom",
+                current: current.clone(),
+                latest: latest.clone(),
+            });
+        }
+    }
+
+    outdated
 }
 
 fn detect_target() -> Option<&'static str> {
@@ -151,7 +214,6 @@ fn self_update(latest: &str) -> Result<ui::ComponentStatus> {
     }
 
     let _ = fs::remove_file(&backup);
-    write_cache(latest);
 
     Ok(ui::ComponentStatus::Updated(current, latest.to_string()))
 }
@@ -161,10 +223,11 @@ pub fn run(_full: bool) -> Result<()> {
 
     let sp = ui::spinner("checking for updates");
     let latest = fetch_remote_version()?;
-    write_cache(&latest);
     sp.finish_and_clear();
 
     let current = version::current().to_string();
+    let rtk_before = rtk::installed_version();
+    let headroom_before = headroom::installed_version();
     let mut updated_count = 0u32;
 
     let whetstone_status = match self_update(&latest) {
@@ -196,6 +259,15 @@ pub fn run(_full: bool) -> Result<()> {
 
     let memory_status = ui::ComponentStatus::UpToDate("embedded".into());
     ui::component_line("memory (ICM)", &memory_status);
+
+    write_cache(&VersionCache {
+        whetstone_latest: latest.clone(),
+        rtk_current: rtk_before,
+        rtk_latest: rtk::installed_version(),
+        headroom_current: headroom_before,
+        headroom_latest: headroom::installed_version(),
+        timestamp: now_epoch(),
+    });
 
     if updated_count > 0 {
         ui::summary_ok(&format!("Updated {updated_count} component(s)"));

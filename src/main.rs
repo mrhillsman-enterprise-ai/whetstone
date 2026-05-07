@@ -23,9 +23,8 @@ fn show_upgrade_banner(cmd: &Option<Command>) {
     if skip {
         return;
     }
-    if let Some((current, latest)) = update::check_cached_upgrade() {
-        ui::upgrade_banner(&current, &latest);
-    }
+    let outdated = update::check_cached_upgrade();
+    ui::upgrade_banner(&outdated);
 }
 
 fn main() {

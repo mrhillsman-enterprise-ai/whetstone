@@ -49,12 +49,33 @@ pub fn select<T: std::fmt::Display>(prompt: &str, items: &[T], default: usize) -
         .unwrap_or(default)
 }
 
-pub fn upgrade_banner(current: &str, latest: &str) {
-    let arrow_line = format!("{} → {}", current, latest);
-    let action_line = "Run: whetstone update";
-    let title = "UPGRADE AVAILABLE";
+pub fn upgrade_banner(components: &[crate::update::OutdatedComponent]) {
+    if components.is_empty() {
+        return;
+    }
 
-    let inner = BOX_WIDTH - 4;
+    let title = "UPDATES AVAILABLE";
+    let action_line = "Run: whetstone update";
+
+    let mut content_lines: Vec<String> = Vec::new();
+    for c in components {
+        content_lines.push(format!("{}: {} → {}", c.name, c.current, c.latest));
+    }
+
+    let max_content = content_lines
+        .iter()
+        .map(|l| l.chars().count())
+        .max()
+        .unwrap_or(0);
+    let min_width = [
+        title.chars().count() + 4,
+        action_line.chars().count(),
+        max_content,
+    ]
+    .into_iter()
+    .max()
+    .unwrap_or(0);
+    let inner = min_width.max(BOX_WIDTH - 4);
     let border = "─".repeat(inner + 2);
 
     eprintln!();
@@ -83,11 +104,19 @@ pub fn upgrade_banner(current: &str, latest: &str) {
         " ".repeat(inner + 2),
         style("│").cyan()
     );
+    for line in &content_lines {
+        eprintln!(
+            "  {} {} {}{}",
+            style("│").cyan(),
+            style(line).white().bold(),
+            " ".repeat(inner.saturating_sub(line.chars().count() + 1)),
+            style("│").cyan()
+        );
+    }
     eprintln!(
-        "  {} {} {}{}",
+        "  {}{}{}",
         style("│").cyan(),
-        style(&arrow_line).white().bold(),
-        " ".repeat(inner.saturating_sub(arrow_line.chars().count() + 1)),
+        " ".repeat(inner + 2),
         style("│").cyan()
     );
     eprintln!(
