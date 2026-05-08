@@ -4,7 +4,7 @@ use std::process::Command;
 use crate::ui;
 use crate::version;
 
-const MIN_VERSION: &str = "0.14.0";
+const MIN_VERSION: &str = "0.21.0";
 
 pub fn resolve_extras(input: &str) -> String {
     match input.trim().to_lowercase().as_str() {
@@ -77,7 +77,10 @@ fn run_uv_install(spec: &str, upgrade: bool) -> Result<()> {
     }
     args.push(spec);
 
-    let status = Command::new("uv").args(&args).status()?;
+    let status = Command::new("uv")
+        .args(&args)
+        .env("PYO3_USE_ABI3_FORWARD_COMPATIBILITY", "1")
+        .status()?;
 
     if !status.success() {
         bail!(

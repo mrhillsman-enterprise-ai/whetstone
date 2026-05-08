@@ -4,7 +4,7 @@ use std::process::Command;
 use crate::ui;
 use crate::version;
 
-const MIN_VERSION: &str = "0.7.0";
+const MIN_VERSION: &str = "0.39.0";
 const INSTALL_URL: &str =
     "https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh";
 
