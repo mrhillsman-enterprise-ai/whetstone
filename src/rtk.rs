@@ -80,26 +80,3 @@ fn run_install() -> Result<()> {
     }
     Ok(())
 }
-
-pub fn configure() -> Result<()> {
-    ui::info("configuring rtk global hook");
-
-    let home = dirs::home_dir().unwrap_or_default();
-    let hooks_dir = home.join(".claude").join("hooks");
-    std::fs::create_dir_all(&hooks_dir)?;
-
-    let status = Command::new("rtk")
-        .args(["init", "-g", "--hook-only", "--auto-patch"])
-        .status();
-
-    match status {
-        Ok(s) if s.success() => {
-            ui::ok("rtk hook configured");
-            Ok(())
-        }
-        _ => {
-            ui::warn("rtk init -g failed — hook may need manual setup");
-            Ok(())
-        }
-    }
-}

@@ -46,32 +46,29 @@ pub fn run(full: bool, headroom_extras: &str) -> Result<()> {
     ui::info("checking dependencies");
     preflight::check_all()?;
 
-    ui::info("step 1/7 — headroom");
+    ui::info("step 1/6 — headroom");
     headroom::install(headroom_extras, full)?;
 
-    ui::info("step 2/7 — rtk");
+    ui::info("step 2/6 — rtk");
     rtk::install(full)?;
 
-    ui::info("step 3/7 — rtk hook");
-    rtk::configure()?;
-
-    ui::info("step 4/7 — shell profile");
+    ui::info("step 3/6 — shell profile");
     shell::set_anthropic_base_url(DEFAULT_PROXY)?;
     shell::ensure_path_contains_local_bin()?;
 
-    ui::info("step 5/7 — install whetstone binary");
+    ui::info("step 4/6 — install whetstone binary");
     self_install()?;
 
     let provider = prompt_memory_provider(full)?;
 
     if provider != MemoryProvider::Skip {
-        ui::info("step 6/8 — skills, rules, commands");
+        ui::info("step 5/7 — skills, rules, commands");
         install_general_assets(&assets, full, headroom_extras)?;
 
-        ui::info(&format!("step 7/8 — {} provider", provider.name()));
+        ui::info(&format!("step 6/7 — {} provider", provider.name()));
         install_provider(provider)?;
 
-        ui::info("step 8/8 — hooks + settings.json");
+        ui::info("step 7/7 — hooks + settings.json");
         let claude_dir = dirs::home_dir()
             .context("could not determine home directory")?
             .join(".claude");
