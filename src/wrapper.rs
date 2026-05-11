@@ -1,5 +1,6 @@
 use serde_json::Value;
 use std::env;
+use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -47,12 +48,12 @@ fn should_skip_headroom_rtk_setup() -> bool {
     global_headroom_rtk_hook_exists()
 }
 
-fn rtk_exists_on_path() -> bool {
-    let Some(path_var) = env::var_os("PATH") else {
+fn rtk_exists_on_path(path_var: Option<&OsStr>) -> bool {
+    let Some(path_var) = path_var else {
         return false;
     };
 
-    env::split_paths(&path_var).any(path_has_rtk_binary)
+    env::split_paths(path_var).any(path_has_rtk_binary)
 }
 
 fn path_has_rtk_binary(dir: PathBuf) -> bool {
@@ -84,19 +85,31 @@ fn global_headroom_rtk_hook_exists() -> bool {
 }
 
 fn settings_has_headroom_rtk_hook(settings: &Value) -> bool {
+    settings_has_headroom_rtk_hook_for(settings, env::var_os("PATH").as_deref())
+}
+
+fn settings_has_headroom_rtk_hook_for(settings: &Value, path_var: Option<&OsStr>) -> bool {
     settings
         .get("hooks")
         .and_then(|hooks| hooks.get("PreToolUse"))
         .and_then(Value::as_array)
-        .is_some_and(|entries| entries.iter().any(entry_has_headroom_rtk_hook))
+        .is_some_and(|entries| {
+            entries
+                .iter()
+                .any(|entry| entry_has_headroom_rtk_hook(entry, path_var))
+        })
 }
 
-fn entry_has_headroom_rtk_hook(entry: &Value) -> bool {
+fn entry_has_headroom_rtk_hook(entry: &Value, path_var: Option<&OsStr>) -> bool {
     matcher_allows_bash(entry)
         && entry
             .get("hooks")
             .and_then(Value::as_array)
-            .is_some_and(|hooks| hooks.iter().any(command_is_headroom_rtk_hook))
+            .is_some_and(|hooks| {
+                hooks
+                    .iter()
+                    .any(|hook| command_is_headroom_rtk_hook(hook, path_var))
+            })
 }
 
 fn matcher_allows_bash(entry: &Value) -> bool {
@@ -106,15 +119,15 @@ fn matcher_allows_bash(entry: &Value) -> bool {
         .is_some_and(|matcher| matcher.contains("Bash"))
 }
 
-fn command_is_headroom_rtk_hook(hook: &Value) -> bool {
+fn command_is_headroom_rtk_hook(hook: &Value, path_var: Option<&OsStr>) -> bool {
     hook.get("type").and_then(Value::as_str) == Some("command")
         && hook
             .get("command")
             .and_then(Value::as_str)
-            .is_some_and(rtk_hook_command_is_usable)
+            .is_some_and(|command| rtk_hook_command_is_usable(command, path_var))
 }
 
-fn rtk_hook_command_is_usable(command: &str) -> bool {
+fn rtk_hook_command_is_usable(command: &str, path_var: Option<&OsStr>) -> bool {
     let Some(program) = rtk_hook_program(command) else {
         return false;
     };
@@ -124,7 +137,7 @@ fn rtk_hook_command_is_usable(command: &str) -> bool {
     }
 
     if is_bare_rtk_program(program) {
-        return rtk_exists_on_path();
+        return rtk_exists_on_path(path_var);
     }
 
     let path = Path::new(program);
@@ -196,7 +209,6 @@ mod tests {
     use super::*;
     use serde_json::json;
     use std::path::{Path, PathBuf};
-    use std::sync::{Mutex, OnceLock};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn strings(values: &[&str]) -> Vec<String> {
@@ -236,34 +248,6 @@ exit 0
         let _ = fs::remove_dir(dir);
     }
 
-    fn with_temp_path(path: &Path, f: impl FnOnce()) {
-        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-
-        let _guard = ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
-        let old_path = std::env::var_os("PATH");
-        let mut paths = vec![path.to_path_buf()];
-
-        if let Some(existing) = old_path.clone() {
-            paths.extend(std::env::split_paths(&existing));
-        }
-
-        let joined = std::env::join_paths(paths).unwrap();
-        unsafe {
-            std::env::set_var("PATH", &joined);
-        }
-
-        f();
-
-        match old_path {
-            Some(value) => unsafe {
-                std::env::set_var("PATH", value);
-            },
-            None => unsafe {
-                std::env::remove_var("PATH");
-            },
-        }
-    }
-
     #[test]
     fn build_claude_args_adds_model_and_skips_rtk_when_ready() {
         let args = build_claude_args(&[], true);
@@ -299,9 +283,10 @@ exit 0
             }
         });
 
-        with_temp_path(&dir, || {
-            assert!(settings_has_headroom_rtk_hook(&settings));
-        });
+        assert!(settings_has_headroom_rtk_hook_for(
+            &settings,
+            Some(dir.as_os_str()),
+        ));
         cleanup_fake_rtk(&dir, &binary);
     }
 
