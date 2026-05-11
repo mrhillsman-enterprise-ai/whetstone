@@ -195,51 +195,15 @@ fn exec(program: &str, args: &[String]) -> ! {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::path::{Path, PathBuf};
+    use std::sync::{Mutex, OnceLock};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn strings(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| (*value).to_string()).collect()
     }
 
-    #[test]
-    fn build_claude_args_adds_model_and_skips_rtk_when_ready() {
-        let args = build_claude_args(&[], true);
-
-        assert_eq!(
-            args,
-            strings(&["wrap", "claude", "--no-rtk", "--model", DEFAULT_MODEL,])
-        );
-    }
-
-    #[test]
-    fn build_claude_args_preserves_explicit_model() {
-        let args = build_claude_args(&["--model".into(), "claude-sonnet".into()], false);
-
-        assert_eq!(
-            args,
-            strings(&["wrap", "claude", "--model", "claude-sonnet"])
-        );
-    }
-
-    #[test]
-    fn settings_hook_detection_matches_headroom_hook() {
-        let settings = json!({
-            "hooks": {
-                "PreToolUse": [{
-                    "matcher": "Bash",
-                    "hooks": [{
-                        "type": "command",
-                        "command": "rtk hook claude"
-                    }]
-                }]
-            }
-        });
-
-        assert!(settings_has_headroom_rtk_hook(&settings));
-    }
-
-    #[test]
-    fn settings_hook_detection_matches_absolute_rtk_hook_path() {
+    fn create_fake_rtk_binary() -> (PathBuf, PathBuf) {
         let stamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -264,6 +228,86 @@ exit 0
             fs::set_permissions(&binary, perms).unwrap();
         }
 
+        (dir, binary)
+    }
+
+    fn cleanup_fake_rtk(dir: &Path, binary: &Path) {
+        let _ = fs::remove_file(binary);
+        let _ = fs::remove_dir(dir);
+    }
+
+    fn with_temp_path(path: &Path, f: impl FnOnce()) {
+        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+        let _guard = ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let old_path = std::env::var_os("PATH");
+        let mut paths = vec![path.to_path_buf()];
+
+        if let Some(existing) = old_path.clone() {
+            paths.extend(std::env::split_paths(&existing));
+        }
+
+        let joined = std::env::join_paths(paths).unwrap();
+        unsafe {
+            std::env::set_var("PATH", &joined);
+        }
+
+        f();
+
+        match old_path {
+            Some(value) => unsafe {
+                std::env::set_var("PATH", value);
+            },
+            None => unsafe {
+                std::env::remove_var("PATH");
+            },
+        }
+    }
+
+    #[test]
+    fn build_claude_args_adds_model_and_skips_rtk_when_ready() {
+        let args = build_claude_args(&[], true);
+
+        assert_eq!(
+            args,
+            strings(&["wrap", "claude", "--no-rtk", "--model", DEFAULT_MODEL,])
+        );
+    }
+
+    #[test]
+    fn build_claude_args_preserves_explicit_model() {
+        let args = build_claude_args(&["--model".into(), "claude-sonnet".into()], false);
+
+        assert_eq!(
+            args,
+            strings(&["wrap", "claude", "--model", "claude-sonnet"])
+        );
+    }
+
+    #[test]
+    fn settings_hook_detection_matches_headroom_hook() {
+        let (dir, binary) = create_fake_rtk_binary();
+        let settings = json!({
+            "hooks": {
+                "PreToolUse": [{
+                    "matcher": "Bash",
+                    "hooks": [{
+                        "type": "command",
+                        "command": "rtk hook claude"
+                    }]
+                }]
+            }
+        });
+
+        with_temp_path(&dir, || {
+            assert!(settings_has_headroom_rtk_hook(&settings));
+        });
+        cleanup_fake_rtk(&dir, &binary);
+    }
+
+    #[test]
+    fn settings_hook_detection_matches_absolute_rtk_hook_path() {
+        let (dir, binary) = create_fake_rtk_binary();
         let settings = json!({
             "hooks": {
                 "PreToolUse": [{
@@ -277,8 +321,7 @@ exit 0
         });
 
         assert!(settings_has_headroom_rtk_hook(&settings));
-        let _ = fs::remove_file(&binary);
-        let _ = fs::remove_dir(&dir);
+        cleanup_fake_rtk(&dir, &binary);
     }
 
     #[test]
@@ -317,32 +360,9 @@ exit 0
 
     #[test]
     fn path_detection_finds_executable_rtk() {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!("whetstone-rtk-{stamp}"));
-        fs::create_dir_all(&dir).unwrap();
-        let binary = dir.join(rtk_binary_name());
-        fs::write(
-            &binary,
-            "#!/bin/sh
-exit 0
-",
-        )
-        .unwrap();
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-
-            let mut perms = fs::metadata(&binary).unwrap().permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&binary, perms).unwrap();
-        }
+        let (dir, binary) = create_fake_rtk_binary();
 
         assert!(path_has_rtk_binary(dir.clone()));
-        let _ = fs::remove_file(&binary);
-        let _ = fs::remove_dir(&dir);
+        cleanup_fake_rtk(&dir, &binary);
     }
 }
