@@ -31,17 +31,17 @@ curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/instal
 ## RTK hook not rewriting commands
 
 ```bash
-# Check hook exists
-ls -la ~/.claude/hooks/rtk-rewrite.sh
-
-# Check settings.json has the hook
+# Check settings.json has the RTK Claude hook
 cat ~/.claude/settings.json | python3 -m json.tool
+# Look for a command ending in: rtk hook claude
 
-# Test rewrite manually
-echo '{"tool_name":"Bash","tool_input":{"command":"git status"}}' | bash ~/.claude/hooks/rtk-rewrite.sh
+# Test the exact command from settings.json
+# Example:
+echo '{"tool_name":"Bash","tool_input":{"command":"git status"}}' | /home/you/.local/bin/rtk hook claude
 
-# Re-initialize
-rtk init -g --hook-only --auto-patch
+# Reinstall whetstone's Claude hook configuration
+# Choose a memory provider other than Skip so hook setup runs.
+whetstone setup
 ```
 
 ## Headroom proxy not compressing

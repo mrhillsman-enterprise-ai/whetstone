@@ -4,8 +4,7 @@
 
 | File | Owner | Purpose |
 |------|-------|---------|
-| `~/.claude/settings.json` | RTK + whetstone | All hooks (absolute paths to `~/.claude/hooks/`) |
-| `~/.claude/hooks/rtk-rewrite.sh` | RTK | Bash command rewriter |
+| `~/.claude/settings.json` | RTK + whetstone | All hooks, including whetstone's absolute `.../rtk hook claude` command |
 | `~/.claude/RTK.md` | RTK | RTK instructions for Claude Code context |
 | `~/.claude/CLAUDE.md` | Claude Code | Global instructions (references `@RTK.md`) |
 | `~/.headroom/models.json` | Headroom | Custom model context limits and pricing |

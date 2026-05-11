@@ -23,7 +23,7 @@ claude
 - Memory hooks fire on session start/end, commits, pushes
 - Memory skills activate on keyword triggers ("recall", "todo", "verify", etc.)
 
-**Hook configuration** lives in `~/.claude/settings.json` (global). All hooks — RTK and Memory — are installed to `~/.claude/hooks/` with absolute paths. Works in every project, every directory.
+**Hook configuration** lives in `~/.claude/settings.json` (global). RTK is registered there as an absolute `.../rtk hook claude` command, while whetstone's Memory scripts live under `~/.claude/hooks/`. Works in every project, every directory.
 
 **MCP tools** (optional, adds `headroom_compress`, `headroom_retrieve`, `headroom_stats`):
 ```bash

@@ -44,7 +44,7 @@ fn build_claude_args(args: &[String], skip_rtk_setup: bool) -> Vec<String> {
 }
 
 fn should_skip_headroom_rtk_setup() -> bool {
-    rtk_exists_on_path() && global_headroom_rtk_hook_exists()
+    global_headroom_rtk_hook_exists()
 }
 
 fn rtk_exists_on_path() -> bool {
@@ -108,7 +108,43 @@ fn matcher_allows_bash(entry: &Value) -> bool {
 
 fn command_is_headroom_rtk_hook(hook: &Value) -> bool {
     hook.get("type").and_then(Value::as_str) == Some("command")
-        && hook.get("command").and_then(Value::as_str) == Some("rtk hook claude")
+        && hook
+            .get("command")
+            .and_then(Value::as_str)
+            .is_some_and(rtk_hook_command_is_usable)
+}
+
+fn rtk_hook_command_is_usable(command: &str) -> bool {
+    let Some(program) = rtk_hook_program(command) else {
+        return false;
+    };
+
+    if !program_ends_with_rtk(program) {
+        return false;
+    }
+
+    if is_bare_rtk_program(program) {
+        return rtk_exists_on_path();
+    }
+
+    let path = Path::new(program);
+    path.is_file() && path_is_executable(path)
+}
+
+fn rtk_hook_program(command: &str) -> Option<&str> {
+    let program = command.strip_suffix(" hook claude")?.trim();
+    Some(program.trim_matches('"'))
+}
+
+fn program_ends_with_rtk(program: &str) -> bool {
+    let path = Path::new(program);
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name == rtk_binary_name())
+}
+
+fn is_bare_rtk_program(program: &str) -> bool {
+    program == rtk_binary_name()
 }
 
 #[cfg(unix)]
@@ -203,7 +239,67 @@ mod tests {
     }
 
     #[test]
-    fn settings_hook_detection_rejects_non_headroom_hook() {
+    fn settings_hook_detection_matches_absolute_rtk_hook_path() {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("whetstone-rtk-{stamp}"));
+        fs::create_dir_all(&dir).unwrap();
+        let binary = dir.join(rtk_binary_name());
+        fs::write(
+            &binary,
+            "#!/bin/sh
+exit 0
+",
+        )
+        .unwrap();
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let mut perms = fs::metadata(&binary).unwrap().permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&binary, perms).unwrap();
+        }
+
+        let settings = json!({
+            "hooks": {
+                "PreToolUse": [{
+                    "matcher": "Bash",
+                    "hooks": [{
+                        "type": "command",
+                        "command": format!("{} hook claude", binary.display())
+                    }]
+                }]
+            }
+        });
+
+        assert!(settings_has_headroom_rtk_hook(&settings));
+        let _ = fs::remove_file(&binary);
+        let _ = fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn settings_hook_detection_rejects_missing_absolute_rtk_hook() {
+        let settings = json!({
+            "hooks": {
+                "PreToolUse": [{
+                    "matcher": "Bash",
+                    "hooks": [{
+                        "type": "command",
+                        "command": "/tmp/missing/rtk hook claude"
+                    }]
+                }]
+            }
+        });
+
+        assert!(!settings_has_headroom_rtk_hook(&settings));
+    }
+
+    #[test]
+    fn settings_hook_detection_rejects_non_rtk_hook() {
         let settings = json!({
             "hooks": {
                 "PreToolUse": [{
