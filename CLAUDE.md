@@ -28,10 +28,11 @@ Single binary distribution. Users run `whetstone setup` from inside a git projec
 | `cargo test` | Run all tests (11 tests) |
 | `cargo clippy` | Run lints |
 | `cargo fmt` | Format Rust code |
-| `just build` | Build release binary |
+| `just build` | Build debug binary |
 | `just test` | Run tests |
-| `just release <bump>` | Bump VERSION and optionally tag |
-| `just release-publish <bump>` | Bump, commit, tag, and push |
+| `just release-check` | Format check, tests, and lints for releases |
+| `just release <bump>` | Verify, bump version, and open a release PR |
+| `just release-publish <bump>` | Deprecated legacy path |
 <!-- AUTO-GENERATED: end -->
 
 ## CLI Reference
@@ -47,8 +48,8 @@ whetstone proxy [args...]
 whetstone rtk [args...]
 whetstone version
 whetstone update [--full]
-whetstone release patch|minor|major|set X.Y.Z [--tag]
-whetstone release-publish patch|minor|major|set X.Y.Z [--tag]
+whetstone release patch|minor|major|set X.Y.Z
+whetstone release-publish patch|minor|major|set X.Y.Z # Deprecated
 whetstone db init|add-session|add-insight|search|get-sessions|...
 ```
 <!-- AUTO-GENERATED: end -->
@@ -98,7 +99,7 @@ src/
 ├── uninstall.rs     # Interactive component removal
 ├── wrapper.rs       # claude/proxy/rtk exec wrappers
 ├── update.rs        # 12h-cached remote version check
-├── release.rs       # Version bump, tag, publish
+├── release.rs       # Release preflight, version bump, and PR creation
 ├── db.rs            # SQLite ops for session/memory database
 ├── memory.rs        # MemoryProvider enum (ICM, AutoMem, Skip)
 ├── hooks.rs         # Hook script copy + settings.json merge
