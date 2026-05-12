@@ -239,7 +239,12 @@ jobs:
           VERSION: ${{ needs.check-tag.outputs.version }}
         run: |
           URL="https://crates.io/api/v1/crates/whetstone-cli/${VERSION}"
-          STATUS=$(curl -sS -o /dev/null -w "%{http_code}" "$URL")
+          STATUS=$(curl -sS \
+            -H "Accept: application/json" \
+            -A "whetstone-release-check" \
+            -o /dev/null \
+            -w "%{http_code}" \
+            "$URL")
           if [ "$STATUS" = "200" ]; then
             echo "needed=false" >> "$GITHUB_OUTPUT"
             echo "Version ${VERSION} is already published"
