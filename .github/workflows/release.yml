@@ -174,10 +174,15 @@ jobs:
       - name: Inspect release metadata
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.check-tag.outputs.tag }}
         run: |
-          gh release view "$TAG"             --json tagName,isDraft,isPrerelease,assets > release.json
-          gh release download "$TAG" --pattern "SHA256SUMS.txt" --dir .
+          gh release view "$TAG" \
+            --json tagName,isDraft,isPrerelease,assets \
+            > release.json
+          gh release download "$TAG" \
+            --pattern "SHA256SUMS.txt" \
+            --dir .
           python3 - <<'PY2'
           import json
           import os
