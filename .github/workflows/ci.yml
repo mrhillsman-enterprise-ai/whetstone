@@ -22,11 +22,8 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Format
-        run: cargo fmt --check
+      - name: Install just
+        run: cargo install just --locked
 
-      - name: Clippy
-        run: cargo clippy -- -D warnings
-
-      - name: Test
-        run: cargo test
+      - name: Release check
+        run: just release-check

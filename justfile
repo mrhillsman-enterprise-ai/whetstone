@@ -27,8 +27,15 @@ lint:
 fmt:
     cargo fmt
 
+# Check formatting without modifying files
+fmt-check:
+    cargo fmt --check
+
 # Build, test, and lint in one shot
 check: build test lint
+
+# Release verification gate
+release-check: fmt-check test lint
 
 # Run whetstone setup (uses cargo run)
 setup *ARGS:
@@ -39,9 +46,9 @@ uninstall:
     cargo run -- uninstall
 
 # Bump version, push release branch, and open PR: just release patch|minor|major
-release *ARGS: check
+release *ARGS: release-check
     cargo run -- release {{ARGS}}
 
-# Bump, commit, tag, and push release in one command (runs check first)
-release-publish *ARGS: check
+# Deprecated legacy path kept for compatibility
+release-publish *ARGS:
     cargo run -- release-publish {{ARGS}}
