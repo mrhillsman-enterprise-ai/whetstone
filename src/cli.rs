@@ -19,7 +19,8 @@ pub enum Command {
         #[arg(long)]
         full: bool,
 
-        /// Headroom pip extras: "all" (default), "none", or comma-separated like "proxy,code"
+        /// Headroom pip extras: "all" (default), "none", or
+        /// comma-separated like "proxy,code"
         #[arg(long, default_value = "all")]
         headroom_extras: String,
     },
@@ -60,13 +61,13 @@ pub enum Command {
         full: bool,
     },
 
-    /// Bump VERSION file
+    /// Prepare a release PR; GitHub Actions publishes after merge
     Release {
         #[command(subcommand)]
         action: ReleaseAction,
     },
 
-    /// Release, commit, tag, and push
+    /// Deprecated legacy release path
     ReleasePublish {
         #[command(subcommand)]
         action: ReleaseAction,

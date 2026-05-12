@@ -11,8 +11,8 @@
 | `whetstone rtk [args...]` | Run RTK |
 | `whetstone version` | Print version |
 | `whetstone update [--full]` | Check for updates |
-| `whetstone release patch\|minor\|major\|set X.Y.Z [--tag]` | Bump VERSION |
-| `whetstone release-publish ...` | Bump, commit, tag, and push |
+| `whetstone release patch\|minor\|major\|set X.Y.Z` | Verify, bump version, and open a release PR |
+| `whetstone release-publish ...` | Deprecated legacy path |
 | `whetstone db <subcommand>` | Session database operations |
 
 ## Headroom Extras
@@ -38,8 +38,8 @@ whetstone update --full            # Force-upgrade Headroom/RTK
 For contributors:
 
 ```bash
-just release patch                 # Bump patch version
-just release-publish minor         # Bump, commit, tag, and push
+just release-check                # Release verification gate
+just release patch                 # Verify, bump version, and open release PR
 ```
 
 ## Headroom Proxy Flags
