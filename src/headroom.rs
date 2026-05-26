@@ -1,10 +1,29 @@
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
+use serde::Deserialize;
 use std::process::Command;
 
 use crate::ui;
 use crate::version;
 
 const MIN_VERSION: &str = "0.21.0";
+const PYPI_URL: &str = "https://pypi.org/pypi/headroom-ai/json";
+
+#[derive(Deserialize)]
+struct PypiResponse {
+    info: PypiInfo,
+}
+
+#[derive(Deserialize)]
+struct PypiInfo {
+    version: String,
+}
+
+pub fn latest_remote_version() -> Option<String> {
+    let resp = ureq::get(PYPI_URL).call().ok()?;
+    let body = resp.into_string().ok()?;
+    let parsed: PypiResponse = serde_json::from_str(&body).ok()?;
+    Some(parsed.info.version)
+}
 
 pub fn resolve_extras(input: &str) -> String {
     match input.trim().to_lowercase().as_str() {
@@ -60,7 +79,16 @@ pub fn update() -> Result<ui::ComponentStatus> {
     };
 
     let spec = package_spec("all");
-    run_uv_install(&spec, true)?;
+    let output = Command::new("uv")
+        .args(["tool", "install", "--upgrade", &spec])
+        .env("PYO3_USE_ABI3_FORWARD_COMPATIBILITY", "1")
+        .output()
+        .context("failed to run uv tool install")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("uv tool install failed: {stderr}");
+    }
 
     let new_ver = installed_version().unwrap_or_else(|| old_ver.clone());
     if new_ver != old_ver {
@@ -108,5 +136,12 @@ mod tests {
     #[test]
     fn extras_custom() {
         assert_eq!(package_spec("proxy,code"), "headroom-ai[proxy,code]");
+    }
+
+    #[test]
+    fn parse_pypi_response() {
+        let json = r#"{"info":{"version":"0.22.2"}}"#;
+        let parsed: PypiResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.info.version, "0.22.2");
     }
 }

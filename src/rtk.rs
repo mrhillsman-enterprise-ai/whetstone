@@ -1,4 +1,5 @@
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
+use serde::Deserialize;
 use std::process::Command;
 
 use crate::ui;
@@ -7,6 +8,23 @@ use crate::version;
 const MIN_VERSION: &str = "0.39.0";
 const INSTALL_URL: &str =
     "https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh";
+const GITHUB_LATEST_URL: &str = "https://api.github.com/repos/rtk-ai/rtk/releases/latest";
+
+#[derive(Deserialize)]
+struct GithubRelease {
+    tag_name: String,
+}
+
+pub fn latest_remote_version() -> Option<String> {
+    let resp = ureq::get(GITHUB_LATEST_URL)
+        .set("User-Agent", "whetstone")
+        .call()
+        .ok()?;
+    let body = resp.into_string().ok()?;
+    let release: GithubRelease = serde_json::from_str(&body).ok()?;
+    let tag = release.tag_name.trim_start_matches('v');
+    version::extract_semver(tag)
+}
 
 pub fn installed_version() -> Option<String> {
     let output = Command::new("rtk").arg("--version").output().ok()?;
@@ -59,7 +77,17 @@ pub fn update() -> Result<ui::ComponentStatus> {
             "not rtk-ai (collision?)".into(),
         ));
     }
-    run_install()?;
+
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg(format!("curl -fsSL {INSTALL_URL} | sh"))
+        .output()
+        .context("failed to run rtk install")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("rtk installation failed: {stderr}");
+    }
 
     let new_ver = installed_version().unwrap_or_else(|| old_ver.clone());
     if new_ver != old_ver {
@@ -79,4 +107,26 @@ fn run_install() -> Result<()> {
         bail!("rtk installation failed");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_github_release() {
+        let json = r#"{"tag_name":"v0.42.0"}"#;
+        let release: GithubRelease = serde_json::from_str(json).unwrap();
+        assert_eq!(release.tag_name, "v0.42.0");
+        let tag = release.tag_name.trim_start_matches('v');
+        assert_eq!(version::extract_semver(tag), Some("0.42.0".into()));
+    }
+
+    #[test]
+    fn parse_github_release_no_v_prefix() {
+        let json = r#"{"tag_name":"0.42.0"}"#;
+        let release: GithubRelease = serde_json::from_str(json).unwrap();
+        let tag = release.tag_name.trim_start_matches('v');
+        assert_eq!(version::extract_semver(tag), Some("0.42.0".into()));
+    }
 }

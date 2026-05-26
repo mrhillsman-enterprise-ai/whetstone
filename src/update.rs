@@ -149,7 +149,7 @@ fn self_update(latest: &str) -> Result<ui::ComponentStatus> {
     let target = detect_target().context("unsupported platform for self-update")?;
     let url = format!("{RELEASE_URL_BASE}/v{latest}/whetstone-{target}.tar.gz");
 
-    let sp = ui::spinner(&format!("downloading whetstone {latest}"));
+    let mut sp = ui::spinner(&format!("downloading whetstone {latest}"));
 
     let resp = ureq::get(&url)
         .call()
@@ -221,16 +221,18 @@ fn self_update(latest: &str) -> Result<ui::ComponentStatus> {
 pub fn run(_full: bool) -> Result<()> {
     ui::section("whetstone update");
 
-    let sp = ui::spinner("checking for updates");
-    let latest = fetch_remote_version()?;
+    let mut sp = ui::spinner("checking for updates");
+    let whetstone_latest = fetch_remote_version()?;
+    let rtk_remote = rtk::latest_remote_version();
+    let headroom_remote = headroom::latest_remote_version();
     sp.finish_and_clear();
 
     let current = version::current().to_string();
-    let rtk_before = rtk::installed_version();
-    let headroom_before = headroom::installed_version();
+    let rtk_current = rtk::installed_version();
+    let headroom_current = headroom::installed_version();
     let mut updated_count = 0u32;
 
-    let whetstone_status = match self_update(&latest) {
+    let whetstone_status = match self_update(&whetstone_latest) {
         Ok(status) => status,
         Err(e) => ui::ComponentStatus::Failed(format!("{e:#}")),
     };
@@ -239,18 +241,30 @@ pub fn run(_full: bool) -> Result<()> {
     }
     ui::component_line("whetstone", &whetstone_status);
 
-    let rtk_status = match rtk::update() {
-        Ok(status) => status,
-        Err(e) => ui::ComponentStatus::Failed(format!("{e:#}")),
+    let rtk_status = match (&rtk_current, &rtk_remote) {
+        (Some(cur), Some(latest)) if !version::is_older(cur, latest) => {
+            ui::ComponentStatus::UpToDate(cur.clone())
+        }
+        (Some(_), _) => match rtk::update() {
+            Ok(status) => status,
+            Err(e) => ui::ComponentStatus::Failed(format!("{e:#}")),
+        },
+        (None, _) => ui::ComponentStatus::NotInstalled,
     };
     if matches!(&rtk_status, ui::ComponentStatus::Updated(_, _)) {
         updated_count += 1;
     }
     ui::component_line("rtk", &rtk_status);
 
-    let headroom_status = match headroom::update() {
-        Ok(status) => status,
-        Err(e) => ui::ComponentStatus::Failed(format!("{e:#}")),
+    let headroom_status = match (&headroom_current, &headroom_remote) {
+        (Some(cur), Some(latest)) if !version::is_older(cur, latest) => {
+            ui::ComponentStatus::UpToDate(cur.clone())
+        }
+        (Some(_), _) => match headroom::update() {
+            Ok(status) => status,
+            Err(e) => ui::ComponentStatus::Failed(format!("{e:#}")),
+        },
+        (None, _) => ui::ComponentStatus::NotInstalled,
     };
     if matches!(&headroom_status, ui::ComponentStatus::Updated(_, _)) {
         updated_count += 1;
@@ -261,20 +275,20 @@ pub fn run(_full: bool) -> Result<()> {
     ui::component_line("memory (ICM)", &memory_status);
 
     write_cache(&VersionCache {
-        whetstone_latest: latest.clone(),
-        rtk_current: rtk_before,
-        rtk_latest: rtk::installed_version(),
-        headroom_current: headroom_before,
-        headroom_latest: headroom::installed_version(),
+        whetstone_latest: whetstone_latest.clone(),
+        rtk_current: rtk::installed_version(),
+        rtk_latest: rtk_remote,
+        headroom_current: headroom::installed_version(),
+        headroom_latest: headroom_remote,
         timestamp: now_epoch(),
     });
 
     if updated_count > 0 {
         ui::summary_ok(&format!("Updated {updated_count} component(s)"));
-
         if matches!(&whetstone_status, ui::ComponentStatus::Updated(_, _)) {
             ui::info(&format!(
-                "whetstone updated from {current} → {latest} — restart your shell to use it"
+                "whetstone updated from {current} → {whetstone_latest} — \
+                 restart your shell to use it"
             ));
         }
     } else {
