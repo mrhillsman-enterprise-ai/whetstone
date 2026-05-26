@@ -24,15 +24,22 @@ Single binary distribution. Users run `whetstone setup` from inside a git projec
 <!-- AUTO-GENERATED: commands -->
 | Command | Description |
 |---------|-------------|
-| `cargo build` | Build the whetstone binary |
-| `cargo test` | Run all tests (11 tests) |
-| `cargo clippy` | Run lints |
-| `cargo fmt` | Format Rust code |
+| `just run <args>` | Run whetstone with arguments |
 | `just build` | Build debug binary |
-| `just test` | Run tests |
-| `just release-check` | Format check, tests, and lints for releases |
-| `just release <bump>` | Verify, bump version, and open a release PR |
-| `just release-publish <bump>` | Deprecated legacy path |
+| `just build-release` | Build optimized release binary |
+| `just test` | Run all tests |
+| `just test-one <name>` | Run a single test by name |
+| `just lint` | Format check + clippy |
+| `just fix` | Auto-format + clippy fix |
+| `just check` | Check compilation without binaries |
+| `just release-check` | Release quality gate (fmt + clippy + test) |
+| `just release <level>` | Bump version, create release branch + PR |
+| `just release-dry-run <level>` | Preview release without changes |
+| `just info` | Show project and toolchain versions |
+| `just loc` | Show lines of code |
+| `just clean` | Remove build artifacts |
+| `just deps` | Show dependency tree |
+| `just audit` | Audit dependencies for vulnerabilities |
 <!-- AUTO-GENERATED: end -->
 
 ## CLI Reference

@@ -55,6 +55,9 @@ pub enum Command {
     /// Print whetstone version
     Version,
 
+    /// Interactive dashboard
+    Dashboard,
+
     /// Pull latest and rerun setup
     Update {
         #[arg(long)]

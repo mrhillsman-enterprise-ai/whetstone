@@ -1,5 +1,6 @@
 mod cli;
 mod config;
+mod dashboard;
 mod db;
 mod headroom;
 mod hooks;
@@ -13,13 +14,17 @@ mod ui;
 mod uninstall;
 mod update;
 mod version;
+mod wizard;
 mod wrapper;
 
 use clap::Parser;
 use cli::{Cli, Command};
 
 fn show_upgrade_banner(cmd: &Option<Command>) {
-    let skip = matches!(cmd, Some(Command::Update { .. } | Command::Version));
+    let skip = matches!(
+        cmd,
+        Some(Command::Update { .. } | Command::Version | Command::Dashboard)
+    );
     if skip {
         return;
     }
@@ -60,10 +65,35 @@ fn main() {
                 wrapper::wrap_rtk(&args);
             }
             Command::Version => {
-                println!("whetstone {}", version::current());
+                let outdated = update::check_cached_upgrade();
+                let is_outdated = |name: &str| outdated.iter().any(|c| c.name == name);
+
+                let entries = vec![
+                    ui::VersionEntry {
+                        name: "whetstone",
+                        version: Some(version::current().to_string()),
+                        outdated: is_outdated("whetstone"),
+                    },
+                    ui::VersionEntry {
+                        name: "headroom",
+                        version: headroom::installed_version(),
+                        outdated: is_outdated("headroom"),
+                    },
+                    ui::VersionEntry {
+                        name: "rtk",
+                        version: rtk::installed_version(),
+                        outdated: is_outdated("rtk"),
+                    },
+                ];
+                ui::version_report(&entries);
             }
             Command::Update { full } => {
                 if let Err(e) = update::run(full) {
+                    ui::fail(&format!("{e:#}"));
+                }
+            }
+            Command::Dashboard => {
+                if let Err(e) = dashboard::run() {
                     ui::fail(&format!("{e:#}"));
                 }
             }
