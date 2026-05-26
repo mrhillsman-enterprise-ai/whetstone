@@ -17,15 +17,14 @@ serde_json = "1"
 rusqlite = { version = "0.31", features = ["bundled"] }
 semver = "1"
 ureq = "2"
-dialoguer = "0.11"
-console = "0.15"
 which = "6"
 dirs = "5"
 chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1"
-indicatif = "0.17"
 flate2 = "1"
 tar = "0.4"
+ratatui = { version = "0.30", default-features = false, features = ["crossterm"] }
+crossterm = "0.28"
 
 [profile.release]
 lto = true
