@@ -171,8 +171,9 @@ release LEVEL: release-check
     cargo set-version --bump {{LEVEL}}
     cargo check --quiet
     VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+    echo "$VERSION" > VERSION
     git checkout -b "release/v${VERSION}"
-    git add Cargo.toml Cargo.lock
+    git add Cargo.toml Cargo.lock VERSION
     git commit -m "release: v${VERSION}"
     git push -u origin "release/v${VERSION}"
     gh pr create \
