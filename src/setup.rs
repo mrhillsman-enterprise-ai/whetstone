@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use crate::memory::MemoryProvider;
 use crate::{config, headroom, hooks, preflight, rtk, shell, ui};
 
-const DEFAULT_PROXY: &str = "http://127.0.0.1:8787";
+pub(crate) const DEFAULT_PROXY: &str = "http://127.0.0.1:8787";
 
 pub fn resolve_assets_dir() -> Result<PathBuf> {
     if let Ok(dir) = std::env::var("WHETSTONE_ASSETS") {
@@ -38,6 +38,13 @@ pub fn resolve_assets_dir() -> Result<PathBuf> {
 }
 
 pub fn run(full: bool, headroom_extras: &str) -> Result<()> {
+    if ui::is_interactive() {
+        return crate::wizard::run(full, headroom_extras);
+    }
+    run_sequential(full, headroom_extras)
+}
+
+fn run_sequential(full: bool, headroom_extras: &str) -> Result<()> {
     ui::info("whetstone setup");
 
     let assets = resolve_assets_dir()?;
@@ -87,7 +94,7 @@ pub fn run(full: bool, headroom_extras: &str) -> Result<()> {
     Ok(())
 }
 
-fn prompt_memory_provider(full: bool) -> Result<MemoryProvider> {
+pub(crate) fn prompt_memory_provider(full: bool) -> Result<MemoryProvider> {
     let project_dir = std::env::current_dir()?;
     let has_existing = project_dir.join(".claude/skills").is_dir()
         || project_dir.join(".claude/MEMSTACK.md").exists();
@@ -125,7 +132,11 @@ fn detect_installed_provider() -> Result<MemoryProvider> {
     }
 }
 
-fn install_general_assets(assets: &Path, full: bool, headroom_extras: &str) -> Result<()> {
+pub(crate) fn install_general_assets(
+    assets: &Path,
+    full: bool,
+    headroom_extras: &str,
+) -> Result<()> {
     let project_dir = std::env::current_dir()?;
     let claude_dir = project_dir.join(".claude");
 
@@ -141,7 +152,7 @@ fn install_general_assets(assets: &Path, full: bool, headroom_extras: &str) -> R
     Ok(())
 }
 
-fn install_provider(provider: MemoryProvider) -> Result<()> {
+pub(crate) fn install_provider(provider: MemoryProvider) -> Result<()> {
     match provider {
         MemoryProvider::Icm => install_icm(),
         MemoryProvider::AutoMem => install_automem(),
@@ -260,7 +271,7 @@ fn copy_memstack_md(assets: &Path, claude_dir: &Path, force: bool) -> Result<()>
     Ok(())
 }
 
-fn generate_stack_setup(provider: MemoryProvider) -> Result<()> {
+pub(crate) fn generate_stack_setup(provider: MemoryProvider) -> Result<()> {
     let project_dir = std::env::current_dir()?;
     let dest = project_dir.join("STACK-SETUP.md");
     let content = stack_setup_content(provider);
@@ -338,7 +349,7 @@ Per-project: `whetstone uninstall`
     )
 }
 
-fn self_install() -> Result<()> {
+pub(crate) fn self_install() -> Result<()> {
     let current_exe =
         std::env::current_exe().context("could not determine current executable path")?;
 
