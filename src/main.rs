@@ -1,5 +1,6 @@
 mod cli;
 mod config;
+mod dashboard;
 mod db;
 mod headroom;
 mod hooks;
@@ -13,13 +14,17 @@ mod ui;
 mod uninstall;
 mod update;
 mod version;
+mod wizard;
 mod wrapper;
 
 use clap::Parser;
 use cli::{Cli, Command};
 
 fn show_upgrade_banner(cmd: &Option<Command>) {
-    let skip = matches!(cmd, Some(Command::Update { .. } | Command::Version));
+    let skip = matches!(
+        cmd,
+        Some(Command::Update { .. } | Command::Version | Command::Dashboard)
+    );
     if skip {
         return;
     }
@@ -84,6 +89,11 @@ fn main() {
             }
             Command::Update { full } => {
                 if let Err(e) = update::run(full) {
+                    ui::fail(&format!("{e:#}"));
+                }
+            }
+            Command::Dashboard => {
+                if let Err(e) = dashboard::run() {
                     ui::fail(&format!("{e:#}"));
                 }
             }
