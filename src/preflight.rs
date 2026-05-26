@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use std::process::Command;
 
 use crate::ui;
@@ -20,10 +20,29 @@ fn check_git_repo() -> Result<()> {
         .map(|o| o.status.success())
         .unwrap_or(false);
 
-    if !ok {
-        bail!("not inside a git repository — run whetstone setup from a project root");
+    if ok {
+        ui::ok("inside git repository");
+        return Ok(());
     }
-    ui::ok("inside git repository");
+
+    if !ui::is_interactive() {
+        bail!("not inside a git repository — run `git init` first or run whetstone setup from a project root");
+    }
+
+    ui::warn("not inside a git repository");
+    if ui::confirm("Initialize a git repository here?", true) {
+        let status = Command::new("git")
+            .arg("init")
+            .status()
+            .context("failed to run git init")?;
+        if !status.success() {
+            bail!("git init failed");
+        }
+        ui::ok("initialized git repository");
+    } else {
+        bail!("whetstone setup requires a git repository");
+    }
+
     Ok(())
 }
 
