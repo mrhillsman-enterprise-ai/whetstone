@@ -195,6 +195,31 @@ pub fn component_line(name: &str, status: &ComponentStatus) {
     }
 }
 
+pub struct VersionEntry {
+    pub name: &'static str,
+    pub version: Option<String>,
+    pub outdated: bool,
+}
+
+pub fn version_report(entries: &[VersionEntry]) {
+    let parts: Vec<String> = entries
+        .iter()
+        .map(|e| {
+            let indicator = if e.outdated { " ⬆" } else { "" };
+            match &e.version {
+                Some(v) => format!(
+                    "{} {}{}",
+                    style(e.name).bold(),
+                    style(v).cyan(),
+                    style(indicator).yellow().bold()
+                ),
+                None => format!("{} {}", style(e.name).bold(), style("—").dim()),
+            }
+        })
+        .collect();
+    println!("{}", parts.join("  "));
+}
+
 pub fn summary_ok(msg: &str) {
     eprintln!();
     eprintln!("  {} {}", style("✓").green().bold(), style(msg).green());
