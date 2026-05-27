@@ -168,12 +168,14 @@ release LEVEL: release-check
         echo "Error: must be on main (currently on $BRANCH)"; exit 1
     fi
     git pull --ff-only origin main
+    OLD_VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
     cargo set-version --bump {{LEVEL}}
     cargo check --quiet
     VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
     echo "$VERSION" > VERSION
+    find site/src -name '*.jsx' -exec sed -i "s|v${OLD_VERSION}|v${VERSION}|g" {} +
     git checkout -b "release/v${VERSION}"
-    git add Cargo.toml Cargo.lock VERSION
+    git add Cargo.toml Cargo.lock VERSION site/
     git commit -m "release: v${VERSION}"
     git push -u origin "release/v${VERSION}"
     gh pr create \
