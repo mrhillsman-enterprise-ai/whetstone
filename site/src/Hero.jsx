@@ -26,7 +26,7 @@ function HeroBadges() {
   return (
     <div className="hero-badges">
       <span className="ws-badge ws-badge--acid"><span className="pulse"></span>BUILD · PASSING</span>
-      <span className="ws-badge ws-badge--royal">CRATES.IO · v2.2.2</span>
+      <span className="ws-badge ws-badge--royal">CRATES.IO · v2.4.0</span>
       <span className="ws-badge ws-badge--mag">MIT</span>
       <span className="ws-badge ws-badge--bone">RUST 2021</span>
     </div>
@@ -37,7 +37,7 @@ function HeroEyebrow() {
   return (
     <div className="eyebrow-row">
       <span className="bar"></span>
-      <span>// WHETSTONE · v2.2.2 · MAY 24 2026</span>
+      <span>// WHETSTONE · v2.4.0 · MAY 24 2026</span>
     </div>
   );
 }
