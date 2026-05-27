@@ -17,7 +17,8 @@ All notable changes to whetstone will be documented in this file.
 
   The prompt is skipped in non-interactive mode, when the user explicitly
   passes `--model claude-opus-4-7`, or when settings already specify the
-  latest model.
+  latest model. Selecting "Keep current" dismisses the prompt until the
+  next whetstone update.
 
 ## [2.3.2] - 2025-05-26
 

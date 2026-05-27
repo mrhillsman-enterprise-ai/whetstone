@@ -73,6 +73,36 @@ fn has_model_value(args: &[String], model: &str) -> bool {
     args.windows(2).any(|w| w[0] == "--model" && w[1] == model)
 }
 
+fn dismissal_path() -> Option<PathBuf> {
+    dirs::cache_dir().map(|c| c.join("whetstone/model-prompt-dismissed"))
+}
+
+fn prompt_is_dismissed() -> bool {
+    let Some(path) = dismissal_path() else {
+        return false;
+    };
+    let Ok(content) = fs::read_to_string(&path) else {
+        return false;
+    };
+    let mut lines = content.lines();
+    let model_match = lines.next() == Some(LATEST_MODEL);
+    let version_match = lines.next() == Some(env!("WHETSTONE_VERSION"));
+    model_match && version_match
+}
+
+fn write_dismissal() {
+    let Some(path) = dismissal_path() else {
+        return;
+    };
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let _ = fs::write(
+        path,
+        format!("{}\n{}\n", LATEST_MODEL, env!("WHETSTONE_VERSION")),
+    );
+}
+
 fn maybe_prompt_model_upgrade(args: &[String]) -> Vec<String> {
     if !crate::ui::is_interactive() {
         return vec![];
@@ -84,6 +114,10 @@ fn maybe_prompt_model_upgrade(args: &[String]) -> Vec<String> {
 
     let current = effective_model();
     if current == LATEST_MODEL {
+        return vec![];
+    }
+
+    if prompt_is_dismissed() {
         return vec![];
     }
 
@@ -118,7 +152,10 @@ fn maybe_prompt_model_upgrade(args: &[String]) -> Vec<String> {
             }
             vec!["--model".into(), LATEST_MODEL.into()]
         }
-        _ => vec![],
+        _ => {
+            write_dismissal();
+            vec![]
+        }
     }
 }
 
@@ -560,6 +597,36 @@ exit 0
         assert_eq!(content["model"], "claude-opus-4-7");
         assert_eq!(content["apiKey"], "sk-test");
         assert_eq!(content["theme"], "dark");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn dismissal_file_suppresses_prompt() {
+        let dir = temp_dir_with_stamp("dismiss");
+        let path = dir.join("model-prompt-dismissed");
+        let content = format!("{}\n{}\n", LATEST_MODEL, env!("WHETSTONE_VERSION"));
+        fs::write(&path, &content).unwrap();
+
+        let read_back = fs::read_to_string(&path).unwrap();
+        let mut lines = read_back.lines();
+        assert_eq!(lines.next(), Some(LATEST_MODEL));
+        assert_eq!(lines.next(), Some(env!("WHETSTONE_VERSION")));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn stale_dismissal_does_not_suppress() {
+        let dir = temp_dir_with_stamp("dismiss-stale");
+        let path = dir.join("model-prompt-dismissed");
+        fs::write(&path, "claude-opus-4-6\n0.0.0\n").unwrap();
+
+        let read_back = fs::read_to_string(&path).unwrap();
+        let mut lines = read_back.lines();
+        let model_match = lines.next() == Some(LATEST_MODEL);
+        let version_match = lines.next() == Some(env!("WHETSTONE_VERSION"));
+        assert!(!model_match || !version_match);
 
         let _ = fs::remove_dir_all(&dir);
     }
