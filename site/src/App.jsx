@@ -6,7 +6,7 @@
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "theme": "auto",
   "heroVariant": "display",
-  "showMarquee": true,
+  "showMarquee": false,
   "showArchitecture": true,
   "headlineAccent": "acid"
 }/*EDITMODE-END*/;
