@@ -2,9 +2,11 @@ mod cli;
 mod config;
 mod dashboard;
 mod db;
+mod doctor;
 mod headroom;
-mod hooks;
+mod integrations;
 mod memory;
+mod migrate;
 mod preflight;
 mod release;
 mod rtk;
@@ -24,7 +26,13 @@ use cli::{Cli, Command};
 fn show_upgrade_banner(cmd: &Option<Command>) {
     let skip = matches!(
         cmd,
-        Some(Command::Update { .. } | Command::Version | Command::Dashboard | Command::Stats)
+        Some(
+            Command::Update { .. }
+                | Command::Version
+                | Command::Dashboard
+                | Command::Stats
+                | Command::Migrate { .. }
+        )
     );
     if skip {
         return;
@@ -98,6 +106,11 @@ fn main() {
                     ui::fail(&format!("{e:#}"));
                 }
             }
+            Command::Doctor => {
+                if let Err(e) = doctor::run() {
+                    ui::fail(&format!("{e:#}"));
+                }
+            }
             Command::Release { action } => {
                 if let Err(e) = release::run(&action) {
                     ui::fail(&format!("{e:#}"));
@@ -116,6 +129,19 @@ fn main() {
             Command::Db { action } => {
                 if let Err(e) = db::dispatch(action) {
                     ui::fail(&e.to_string());
+                }
+            }
+            Command::Migrate {
+                dry_run,
+                yes,
+                rollback,
+            } => {
+                let result = match rollback {
+                    Some(id) => migrate::rollback(&id),
+                    None => migrate::run(migrate::MigrateOptions { dry_run, yes }),
+                };
+                if let Err(e) = result {
+                    ui::fail(&format!("{e:#}"));
                 }
             }
         },

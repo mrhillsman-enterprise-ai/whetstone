@@ -4,21 +4,87 @@ All notable changes to whetstone will be documented in this file.
 
 ## [Unreleased]
 
+### BREAKING — read this before upgrading from v2
+
+v3 is a structural rewrite. **`whetstone setup` will refuse to silently install
+over a v2 project** and hand off to `whetstone migrate` instead. Migrating is
+one command, archive-backed, and reversible. See the
+[Migration Guide](docs/migration.md).
+
+- **AutoMem provider removed.** `MemoryProvider` is now `{ Icm, Skip }`. The
+  `mcpServers.memory` block is torn out of `~/.claude/settings.json` (backed up
+  in the migration archive) and the external FalkorDB + Qdrant service, if
+  one was running, is no longer in whetstone's blast radius — tear it down
+  yourself.
+- **Whetstone no longer bundles skills, rules, or hook scripts.** The five
+  hand-rolled `assets/hooks/*.sh` scripts, the 20-skill / 8-rule
+  `assets/skills/` + `assets/rules/` trees, the `MEMSTACK.md` shim, and the
+  `whetstone`-managed entries in `~/.claude/settings.json` are all gone. ICM
+  owns its own assets; whetstone delegates to `icm init --mode standard`.
+- **Hooks are tool-managed.** `~/.claude/settings.json` is no longer
+  hand-merged by whetstone. `rtk init --auto-patch` and `icm init` write
+  their own hook entries; `whetstone doctor` inspects ordering and reports
+  drift.
+- **Migration is required.** Existing v2 installs (detected by
+  `.claude/memstack/`, the v2 hook scripts, the AutoMem MCP block, or the
+  v2-flavoured skills/rules layout) must run `whetstone migrate` before any
+  v3 command will configure them. `whetstone setup` auto-detects v2 and
+  routes to `migrate`. `--rollback <id>` restores the v2 state byte-for-byte
+  (except the external AutoMem service).
+- **`config.local.json` removed.** Replaced by `.claude/whetstone.json`
+  (schema version, integration version, provider, tool versions, timestamps).
+- **Hardcoded `--model` injection removed.** `whetstone claude` no longer
+  forces a specific model; Claude Code's own settings choose it.
+
 ### Added
 
-- **Model upgrade prompt**: When launching Claude Code, whetstone now checks
-  the effective model (project settings > global settings > default). If the
-  model is not the latest (`claude-opus-4-7`), an interactive prompt offers
-  four options:
-  1. Keep current model and continue
-  2. Use the latest model for this session only
-  3. Set the latest model project-wide (`.claude/settings.local.json`)
-  4. Set the latest model globally (`~/.claude/settings.json`)
+- **`whetstone migrate`** — staged, reversible v2 → v3 migration with
+  `--dry-run`, `-y`, and `--rollback <id>`. Archives backups under
+  `.whetstone/migration-<id>/`. See `docs/migration.md`.
+- **`whetstone doctor`** — inspects installed tool versions,
+  `~/.claude/settings.json` hooks, and the per-project manifest.
+- **`whetstone dashboard`** — TUI for installed tool versions vs. pinned
+  floors.
+- **`whetstone stats`** — token-savings summary from RTK + Headroom stats
+  endpoints.
+- **`whetstone setup` auto-detects v2** and hands off to `migrate` in both
+  the wizard and headless paths.
+- **`install.sh` re-execs `whetstone setup` against `/dev/tty`** so the TUI
+  wizard actually runs under `curl | bash`; offers to install `uv` instead
+  of aborting the preflight.
+- **`whetstone` (default cmd) waits for the proxy before exec'ing claude**
+  so the first API call doesn't fire against a dead `ANTHROPIC_BASE_URL`.
 
-  The prompt is skipped in non-interactive mode, when the user explicitly
-  passes `--model claude-opus-4-7`, or when settings already specify the
-  latest model. Selecting "Keep current" dismisses the prompt until the
-  next whetstone update.
+### Changed
+
+- **v3 phase 1 — thin orchestrator**: whetstone no longer hand-writes
+  `~/.claude/settings.json` hooks. Setup delegates to `rtk init --auto-patch`
+  and `icm init --mode standard`. New `whetstone doctor` subcommand inspects
+  hook ordering and reports drift.
+- **`whetstone.json` manifest**: replaces `config.local.json`. Records
+  schema version, integration version, provider, tool versions, and
+  timestamps. Lives at `.claude/whetstone.json`.
+- **MemoryProvider** collapsed to `{ Icm, Skip }` — AutoMem install path,
+  `preflight::check_npm`, and AutoMem detection removed.
+
+### Removed
+
+- All five `assets/hooks/*.sh` scripts and `src/hooks.rs` — the tools own
+  their own Claude Code hooks now.
+- Hardcoded `--model` injection in `wrapper.rs`. Claude Code's own
+  settings choose the model. Model-upgrade prompt + dismissal-file
+  machinery removed.
+
+### Fixed
+
+- **RTK `MIN_VERSION`**: was `0.39.0`, which never shipped — every
+  `install()` re-installed. Raised to `0.42.0` (interface-contract pin).
+- **`whetstone update --full`**: flag was previously ignored. Now forces
+  a refresh of `rtk` and `headroom` even when up-to-date.
+- **Version drift**: the marketing site reads `WHETSTONE_VERSION` from
+  `site/src/version.js`, regenerated by `just release` from the repo-root
+  `VERSION` file. No more hardcoded `2.2.2` in `Releases.jsx` /
+  `InstallTerminal.jsx`.
 
 ## [2.3.2] - 2025-05-26
 
