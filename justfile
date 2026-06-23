@@ -232,13 +232,16 @@ release LEVEL: release-check
     ADDED=()
     FIXED=()
     CHANGED=()
+    RE_FEAT='^feat(\([^)]*\))?!?:[[:space:]](.+)'
+    RE_FIX='^fix(\([^)]*\))?!?:[[:space:]](.+)'
+    RE_OTHER='^(refactor|perf|chore|ci|docs|test|build|style)(\([^)]*\))?!?:[[:space:]](.+)'
     while IFS= read -r msg; do
         [[ -z "$msg" ]] && continue
-        if [[ "$msg" =~ ^feat(\([^)]*\))?!?:[[:space:]](.+) ]]; then
+        if [[ "$msg" =~ $RE_FEAT ]]; then
             ADDED+=("${BASH_REMATCH[2]}")
-        elif [[ "$msg" =~ ^fix(\([^)]*\))?!?:[[:space:]](.+) ]]; then
+        elif [[ "$msg" =~ $RE_FIX ]]; then
             FIXED+=("${BASH_REMATCH[2]}")
-        elif [[ "$msg" =~ ^(refactor|perf|chore|ci|docs|test|build|style)(\([^)]*\))?!?:[[:space:]](.+) ]]; then
+        elif [[ "$msg" =~ $RE_OTHER ]]; then
             CHANGED+=("${BASH_REMATCH[3]}")
         fi
     done <<< "$COMMIT_LOG"
